@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+########################################################
+#      SYSTEM PREP BEFORE INSTALLER STARTS             #
+########################################################
+
+echo "Running apt update..."
+sudo apt update -y
+
+echo "Running apt upgrade..."
+sudo apt upgrade -y
+
+echo "Installing dependencies..."
+sudo apt install -y curl wget git lsb-release nano unzip
+
+########################################################
+#        PTERODACTYL INSTALLER (v2) Premium Edition    #
+#                Author: Modified by ZynoxPlayzYT       #
+########################################################
+
+export GITHUB_SOURCE="v1.2.0"
+export SCRIPT_RELEASE="v1.2.0"
+export GITHUB_BASE_URL="https://raw.githubusercontent.com/pterodactyl-installer/pterodactyl-installer"
+LOG_PATH="/var/log/pterodactyl-installer.log"
+
+# -------- COLORS ----------
+RED="\e[31m"
+GREEN="\e[32m"
+YELLOW="\e[33m"
+BLUE="\e[34m"
+MAGENTA="\e[35m"
+CYAN="\e[36m"
+RESET="\e[0m"
+
+banner() {
+    clear
+    echo -e "${CYAN}"
+    echo "╔════════════════════════════════════════════╗"
+    echo "║        🟢 Pterodactyl Installer v2         ║"
+    echo "║     Premium Styled • Clean Interface       ║"
+    echo "║     Author: Modified by ZynoxPlayzYT       ║"
+    echo "╚════════════════════════════════════════════╝"
+    echo -e "${RESET}"
+}
+
+msg() { echo -e "${GREEN}* $1${RESET}"; }
+warn() { echo -e "${YELLOW}! $1${RESET}"; }
+err() { echo -e "${RED}✖ $1${RESET}"; }
+
+# --- check curl ---
+if ! command -v curl >/dev/null 2>&1; then
+    err "curl is required but missing!"
+    echo "* Install curl: apt install curl"
+    exit 1
+fi
+
+# --- load lib.sh ---
+[ -f /tmp/lib.sh ] && rm -f /tmp/lib.sh
+curl -sSL -o /tmp/lib.sh "$GITHUB_BASE_URL/master/lib/lib.sh"
+source /tmp/lib.sh
+
+execute() {
+    echo -e "\n\n* Running installer at $(date)\n" >>$LOG_PATH
+
+    [[ "$1" == *"canary"* ]] && export GITHUB_SOURCE="master" && export SCRIPT_RELEASE="canary"
+
+    update_lib_source
+    run_ui "${1//_canary/}" |& tee -a $LOG_PATH
+
+    if [[ -n $2 ]]; then
+        echo -ne "${YELLOW}? Install $2 next? (y/N): ${RESET}"
+        read -r CONFIRM
+        if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
+            execute "$2"
+        else
+            err "Next installation cancelled."
+            exit 1
+        fi
+    fi
+}
+
+menu() {
+    banner
+    msg "Select installation option:"
+
+    OPTIONS=(
+        "🟦 Install Pterodactyl Panel"
+        "🟥 Install Wings"
+        "🟩 Install Panel + Wings"
+        "⚠️ Install Panel (Canary Build)"
+        "⚠️ Install Wings (Canary Build)"
+        "⚠️ Install Panel + Wings (Canary)"
+        "🗑 Uninstall (Canary)"
+    )
+
+    ACTIONS=(
+        "panel"
+        "wings"
+        "panel;wings"
+        "panel_canary"
+        "wings_canary"
+        "panel_canary;wings_canary"
+        "uninstall_canary"
+    )
+
+    for i in "${!OPTIONS[@]}"; do
+        echo -e "  ${BLUE}[$i]${RESET} ${OPTIONS[$i]}"
+    done
+
+    echo -ne "${MAGENTA}\nChoose option (0-${#OPTIONS[@]}): ${RESET}"
+    read -r choice
+
+    [[ -z "$choice" ]] && err "Input cannot be empty!" && return
+    [[ ! "$choice" =~ ^[0-9]+$ ]] && err "Invalid number!" && return
+    [[ "$choice" -gt $(( ${#OPTIONS[@]} - 1 )) ]] && err "Invalid option!" && return
+
+    IFS=";" read -r main next <<<"${ACTIONS[$choice]}"
+    execute "$main" "$next"
+}
+
+menu
+rm -f /tmp/lib.sh
